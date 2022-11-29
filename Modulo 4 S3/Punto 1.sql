@@ -20,11 +20,11 @@ select distinct mnth,account_id, case when calls = 1 then 'Single caller' when c
 from Calls_per_mnth
 )
 
---,resultado as (
+
 select distinct
 a.mnth, c.Repeated_flag, count(distinct a.act_acct_cd) as clients
 from usuarios_activos a inner join Caller_flag c on a.act_acct_cd = c.account_id and a.mnth  = c.mnth
 group by 1,2 order by 1,2
---)
 
---select distinct mnth, sum(clients) from resultado group by 1 order by 1
+
+
