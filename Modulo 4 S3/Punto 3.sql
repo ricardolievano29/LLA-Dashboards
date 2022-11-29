@@ -3,7 +3,7 @@ With
 usuarios_activos as (
 select distinct date_trunc('MONTH', date(dt)) as mes,act_acct_cd  
 from "db-analytics-prod"."fixed_cwp"
-where --date(dt) = date_trunc('MONTH',date(dt)) and 
+where  
 date(dt) >= date('2022-01-01') -- registros solo del 2022
 and act_cust_typ_nm = 'Residencial'-- clientes residenciales unicamente 
 and (fi_outst_age is null or fi_outst_age <90 ) --- clientes que no tienen mas de 90 dias de mora
@@ -23,5 +23,4 @@ from usuarios_activos a inner join "db-stage-prod"."interactions_cwp" i on a.act
 )
 
 select distinct count(distinct act_acct_cd) as usuarios from dias_deactivation where dias_dx <=40 
-
 
