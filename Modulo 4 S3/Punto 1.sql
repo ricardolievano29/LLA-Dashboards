@@ -2,7 +2,7 @@ with
 usuarios_activos as(
 Select distinct date_trunc('MONTH',date(dt)) as mnth,  act_acct_cd
 from "db-analytics-prod"."fixed_cwp"
-where date(dt)>=date('2022-01-01') -- and date(dt)=date_trunc('MONTH',date(dt))
+where date(dt)>=date('2022-01-01')
 and act_cust_typ_nm = 'Residencial'
 and (fi_outst_age <90 or fi_outst_age is null)
 
