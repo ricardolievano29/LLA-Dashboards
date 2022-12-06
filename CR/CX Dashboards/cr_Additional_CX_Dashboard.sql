@@ -1,4 +1,4 @@
---CREATE TABLE IF NOT EXISTS "cr_Additional_CX_Dashboard" AS
+-- CREATE TABLE IF NOT EXISTS "lla_cco_int_san"."cr_Additional_CX_Dashboard" AS
 
 
 WITH
@@ -22,6 +22,8 @@ fmc_table as(
 ,Tiquetes as(
   Select distinct date_trunc('MONTH', interaction_start_time) as TicketMonth,account_id AS Contrato,count(distinct interaction_id) as TechCalls
   From "db-stage-dev"."interactions_cabletica"
+  --Antiguso filtros :  WHERE Clase is not null and Motivo is not null and Contrato is not null and estado <> "ANULADA"
+  -- En este se debe incluir un filtro donde se tomen unicamente los interaction_purpose_descrip que considere unciamente los TechTickets
   WHERE interaction_purpose_descrip is not null and account_id is not null and interaction_status <> 'ANULADA' and interaction_purpose_descrip IN (
     'AVERIAS',
     'SIN SERVICIO INTERNET',
@@ -63,6 +65,7 @@ fmc_table as(
 ,Tiquetes_fmc_Table as(
 
   Select f.*,TechCalls as TechCall_Flag From FinalTablePlanAdj f left join Tiquetes
+  -- ¿Por que se toma unicamente la fixed_account?
   ON Fixed_Account = Contrato and Month=cast(TicketMonth as date)
 )
 
@@ -71,8 +74,13 @@ fmc_table as(
 ,Care_Calls as(
   Select distinct date_trunc('MONTH',interaction_start_time) as CallMonth,account_id AS Contrato,count(distinct interaction_id) as CareCalls
   From "db-stage-dev"."interactions_cabletica"
+  -- Antiguos filtros :  where CLASE IS NOT NULL AND MOTIVO IS NOT NULL AND CONTRATO IS NOT NULL and ESTADO <> "ANULADA" and TIPO <> "GESTION COBRO"
   WHERE interaction_purpose_descrip is not null and account_id is not null
+  -- Filtro donde el purpose description sea diferente a Gestion de cobro fue remplazado por el que sea diferente a Ventanilla
   and interaction_status <> 'ANULADA' and interaction_purpose_descrip <> 'VENTANILLA' 
+  -- Antiguos comentarios: 
+  --and MOTIVO <> "LLAMADA  CONSULTA DESINSTALACION" 
+  --AND subarea<>"VENTA VIRTUAL" AND subarea<>"FECHA Y HORA DE VISITA"and subarea<>"FECHA Y HORA DE VISITA WEB"
   group by 1,2
 )
 
@@ -102,6 +110,10 @@ FROM AbsMRC
 ,BillVariation_Calls as(
   Select distinct date_trunc('MONTH',interaction_start_time) as CallMonth,account_id AS Contrato,count(distinct interaction_id) as BillingCalls
   From "db-stage-dev"."interactions_cabletica"
+ 
+  -- Filtros antiguos: WHERE CLASE IS NOT NULL AND MOTIVO IS NOT NULL AND CONTRATO IS NOT NULL 
+  
+  -- Filro del interactio purpose description, que categorias se identifican como un BillingCall
   WHERE interaction_purpose_descrip is not null and account_id is not null AND interaction_status <> 'ANULADA'
         AND interaction_purpose_descrip IN ( 
         'INFORMACION',
@@ -126,7 +138,9 @@ FROM AbsMRC
 ------------------------------------------------------------------------ FTR Billing --------------------------------------------------------------------------------
 
 ,BillingCalls as (
-  Select distinct * From "db-stage-dev"."interactions_cabletica"  
+  Select distinct * From "db-stage-dev"."interactions_cabletica"
+  -- Filtor antiguo WHERE CLASE IS NOT NULL AND MOTIVO IS NOT NULL AND CONTRATO IS NOT NULLAND ESTADO <> "ANULADA" AND TIPO <> "GESTION COBRO" AND MOTIVO = "CONSULTAS DE FACTURACION O COBRO"
+  
   WHERE interaction_purpose_descrip is not null and account_id is not null AND interaction_status <> 'ANULADA'
         AND interaction_purpose_descrip IN ( 
         'INFORMACION',
