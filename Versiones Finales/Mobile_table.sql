@@ -2,13 +2,13 @@
                     -- VERSION FINAL MOBILE TABLE--
 -----------------------------------------------------------------------
 
---CREATE TABLE IF NOT EXISTS "lla_cco_int_san"."cr_mobile_table" AS
+--CREATE TABLE IF NOT EXISTS "lla_cco_int_san"."cr_mobile_table_ENE33" AS
 
 WITH
 
 MobileUsefulFields as(
 Select distinct date_trunc('Month',date_add('Month',1,case when fecha_parque like '%/%' then cast(DATE_PARSE(CAST(fecha_parque AS VARCHAR(10)), '%d/%m/%Y') as date) else date(fecha_parque) end )) as Month, replace(replace(ID_ABONADO,'.',''),',','') as ID_ABONADO,
-case when contrato is not null and contrato<>'' and contrato<>'#N/D' THen contrato
+case when contrato is not null and contrato<>'' and contrato<>'#N/D' then contrato
 else null end as FixedContract,Num_Telefono,Direccion_Correo,des_segmento_cliente,
 case 
 when (renta like '%#%' or renta like '%/%'or renta like 'NULL') then null -- Esta linea sirve para eliminar valores errones de renta 
@@ -19,13 +19,14 @@ OR fch_activacion='ARTICULO SIN EQUIPO'
 
 THEN NULL else (case when fecha_parque <> '30/11/2022' then date_parse(substring(fch_activacion,1,10),'%m/%d/%Y') else date_parse(substring(fch_activacion,1,10),'%d/%m/%Y') end) END as StartDate 
 
-From "cr_ext_parque_temp"  --limit 10
-WHERE DES_SEGMENTO_CLIENTE <>'Empresas - Empresas' AND DES_SEGMENTO_CLIENTE <>'Empresas - Pymes'
+From "cr_ext_parque_temp"  
+WHERE DES_SEGMENTO_CLIENTE <>'Empresas - Empresas' AND DES_SEGMENTO_CLIENTE <>'Empresas - Pymes' and ID_PLAN_TARIFARIO not in ('LA', 'LB', 'LC','LD','LE','LF','ST2') and DES_USO not in ('Moviles','NO INFORMADO', 'REVISAR')
 
 )
 
+
 ,CustomerBase_BOM as(
-SELECT DISTINCT date_trunc('Month',Month) as B_Month,ID_ABONADO as B_mobile_account,FixedContract as b_fixed_contract,Renta as b_mobile_mrc,Num_Telefono as b_num_telefono,Direccion_correo b_correo, StartDate as b_start_date
+SELECT DISTINCT date_trunc('Month',Month) as B_Month,ID_ABONADO as B_mobile_account,FixedContract as b_fixed_contract,Renta as b_mobile_mrc,Num_Telefono as b_num_telefono,Direccion_correo  as  b_correo, StartDate as b_start_date
 From MobileUsefulFields
 --where fixedcontract is not null
 )
@@ -104,10 +105,10 @@ WHERE mobile_active_bom=1 AND mobile_active_eom=0
 )
 ,Movements as(
 Select *, CASE
-WHEN TIPO_BAJA='ALTA/MIGRACION' THEN '2. Mobile Involuntary Churner'
-WHEN TIPO_BAJA='BAJA INVOLUNTARIA' THEN '2. Mobile Involuntary Churner'
-WHEN TIPO_BAJA='BAJA PORTABILIDAD' THEN '2. Mobile Involuntary Churner'
-WHEN TIPO_BAJA='BAJA VOLUNTARIA' THEN '1. Mobile Voluntary Churner'
+WHEN TIPO_BAJA='ALTA/MIGRACION' OR TIPO_MIGRACION ='ALTA/MIGRACION' THEN '2. Mobile Involuntary Churner'
+WHEN TIPO_BAJA='BAJA INVOLUNTARIA' OR TIPO_MIGRACION ='BAJA INVOLUNTARIA'  THEN '2. Mobile Involuntary Churner'
+WHEN TIPO_BAJA='BAJA PORTABILIDAD' OR TIPO_MIGRACION ='BAJA PORTABILIDAD' THEN '1. Mobile Voluntary Churner'
+WHEN TIPO_BAJA='BAJA VOLUNTARIA' OR TIPO_MIGRACION ='BAJA VOLUNTARIA'  THEN '1. Mobile Voluntary Churner'
 ELSE NULL END AS mobile_churn_type
 From "cr_ext_mov_temp"
 )
