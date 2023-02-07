@@ -2,7 +2,7 @@
                     -- VERSION FINAL MOBILE TABLE--
 -----------------------------------------------------------------------
 
---CREATE TABLE IF NOT EXISTS "lla_cco_int_san"."cr_mobile_table_ENE33" AS
+CREATE TABLE IF NOT EXISTS "lla_cco_int_san"."cr_mobile_table_feb8" AS
 
 WITH
 
@@ -103,15 +103,28 @@ SELECT *, '1. Mobile Churner' as MobileChurnFlag
 FROM MainMovements
 WHERE mobile_active_bom=1 AND mobile_active_eom=0
 )
+
+/*
 ,Movements as(
 Select *, CASE
-WHEN TIPO_BAJA='ALTA/MIGRACION' OR TIPO_MIGRACION ='ALTA/MIGRACION' THEN '2. Mobile Involuntary Churner'
+WHEN (TIPO_BAJA='ALTA/MIGRACION' OR TIPO_MIGRACION ='ALTA/MIGRACION') and (MIGRACION = 'REVERSA DE MIGRACIONES PLANES LIBRES A @' or TIPO_MIGRACION = 'REVERSA DE MIGRACIONES PLANES LIBRES A @') THEN '2. Mobile Involuntary Churner'
 WHEN TIPO_BAJA='BAJA INVOLUNTARIA' OR TIPO_MIGRACION ='BAJA INVOLUNTARIA'  THEN '2. Mobile Involuntary Churner'
 WHEN TIPO_BAJA='BAJA PORTABILIDAD' OR TIPO_MIGRACION ='BAJA PORTABILIDAD' THEN '1. Mobile Voluntary Churner'
 WHEN TIPO_BAJA='BAJA VOLUNTARIA' OR TIPO_MIGRACION ='BAJA VOLUNTARIA'  THEN '1. Mobile Voluntary Churner'
 ELSE NULL END AS mobile_churn_type
 From "cr_ext_mov_temp"
 )
+*/
+,Movements as(
+Select *, CASE
+WHEN MOV1 = 'Migraciones Out' THEN '2. Mobile Involuntary Churner'
+WHEN MOV1='Bajas' and  TIPO_BAJA='BAJA INVOLUNTARIA' OR TIPO_MIGRACION ='BAJA INVOLUNTARIA'  THEN '2. Mobile Involuntary Churner'
+WHEN MOV1='Bajas' and TIPO_BAJA='BAJA PORTABILIDAD' OR TIPO_MIGRACION ='BAJA PORTABILIDAD' THEN '1. Mobile Voluntary Churner'
+WHEN MOV1='Bajas' and TIPO_BAJA='BAJA VOLUNTARIA' OR TIPO_MIGRACION ='BAJA VOLUNTARIA'  THEN '1. Mobile Voluntary Churner'
+ELSE NULL END AS mobile_churn_type
+From "cr_ext_mov_temp"
+)
+
 
 ,ChurnersMovements as(
 SELECT M.*,mobile_churn_type
