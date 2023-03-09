@@ -19,7 +19,7 @@ SELECT  sales_month,CAST(cuenta AS VARCHAR) AS act_acct_cd
         ,TRY(ARRAY_AGG(rgus_vendidos ORDER BY DATE(sales_month)) [1]) as fi_rgu_vendidos
 FROM "db-stage-prod"."cwp_gross_adds_fijo" 
 WHERE sales_month != '' and sales_month IS NOT NULL
-     AND DATE_TRUNC('MONTH', DATE(sales_month)) between (SELECT input_month FROM Parameters) and (SELECT end_month FROM Parameters)
+     AND DATE_TRUNC('MONTH', DATE(sales_month)) = (SELECT input_month FROM Parameters) 
 GROUP BY sales_month,cuenta
 )
 
