@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS "lla_cco_int_san"."cwp_sales_quality_part1"  AS
 WITH 
 Parameters AS (
 SELECT 
-DATE('2022-06-01') AS input_month,
+DATE('2022-12-01') AS input_month,
 date('2022-03-01') as current_month
  )
 --###################### INFORMACIÓN GENERAL ####################################
@@ -398,7 +398,6 @@ FROM MERGING_BASES a
 INNER JOIN sales_channel_calculation  b on a.act_acct_cd = b.act_acct_cd
 INNER JOIN dna_usefull_fields c on a.act_acct_cd = c.act_acct_cd
 )
-
 
 ,summary_flag as (
 SELECT *, case 
