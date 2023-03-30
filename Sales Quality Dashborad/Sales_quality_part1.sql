@@ -1,11 +1,12 @@
-CREATE TABLE IF NOT EXISTS "lla_cco_int_san"."cwp_sales_quality_part1"  AS 
+CREATE TABLE IF NOT EXISTS "lla_cco_int_san"."cwp_sales_quality_ene23"  AS 
 
 WITH 
 Parameters AS (
 SELECT 
-DATE('2022-12-01') AS input_month,
-date('2022-03-01') as current_month
+DATE('2023-01-01') AS input_month,
+date_trunc('Month' ,current_date) as current_month
  )
+ 
 --###################### INFORMACIÓN GENERAL ####################################
 
 /* 
@@ -165,6 +166,7 @@ SELECT  sb.act_acct_cd
         -- ,TRY(ARRAY_AGG(ARREGLO_MRC)[1]) AS ARREGLO_MRC
         -- ,MAX(fi_outst_age) AS max_outst_age_first_bill
         ,MAX(max_tot_mrc) AS max_tot_mrc
+        ,DATE_DIFF('day', DATE(MIN(first_bill_created)), (select current_month from parameters)) as payment_window
         -- ,COUNT(DISTINCT max_tot_mrc) AS DIFF_MRC
 FROM sales_base AS sb
 -- INNER JOIN bills_of_interest AS fb ON fb.act_acct_cd = sb.act_acct_cd AND fb.first_bill_created = DATE(sb.fi_bill_dt_m0)
@@ -173,6 +175,8 @@ WHERE DATE(sb.fi_bill_dt_m0) = mrcc.first_bill_created
 GROUP BY sb.act_acct_cd
 ) 
 
+
+--select * from first_cycle_info where first_bill_created + interval '30' day > date('2023-03-01')
 /* 
 Input: sales_base y base de pagos
 Logica: agregar a la sales base la primera y ultima fecha de pago, el total de pagos realizados a 30, 60 y 90 dias - solo se tienen en cuenta los usuarios
@@ -189,6 +193,7 @@ SELECT account_id AS act_acct_cd
         -- ,TRY(ARRAY_AGG(DATE(DT) ORDER BY DATE(DT) DESC)[1]) AS LAST_PAY_DATE
         -- ,ARRAY_AGG(DATE(DT) ORDER BY DATE(DT)) AS ARREGLO_PAGOS_DATES
         -- ,ARRAY_AGG(CAST(payment_amt_usd AS DOUBLE) ORDER BY DATE(DT)) AS ARREGLO_PAGOS
+        
         ,ROUND(SUM(CAST(payment_amt_usd AS DOUBLE)),2) AS total_payments_in_3_months
         ,ROUND(SUM(IF(DATE_DIFF('month', DATE(FC.first_bill_created), DATE(dt)) < 1 OR (EXTRACT(DAY FROM FC.first_bill_created) = EXTRACT(DAY FROM DATE(dt)) AND EXTRACT(MONTH FROM FC.first_bill_created) + 1 = EXTRACT(MONTH FROM DATE(dt))) ,CAST(payment_amt_usd AS DOUBLE), NULL)),2) AS total_payments_30_days
         ,ROUND(SUM(IF(DATE_DIFF('month', DATE(FC.first_bill_created), DATE(dt)) < 2 OR (EXTRACT(DAY FROM FC.first_bill_created) = EXTRACT(DAY FROM DATE(dt)) AND EXTRACT(MONTH FROM FC.first_bill_created) + 2 = EXTRACT(MONTH FROM DATE(dt))),CAST(payment_amt_usd AS DOUBLE), NULL)),2) AS total_payments_60_days
@@ -199,6 +204,7 @@ INNER JOIN first_cycle_info AS FC ON FC.act_acct_cd = P.account_id
 WHERE DATE(dt) BETWEEN FC.first_bill_created - INTERVAL '45' DAY AND FC.first_bill_created + INTERVAL '3' MONTH
 GROUP BY account_id
 )
+
 --select * from payments_basic where total_payments_in_3_months <> total_payments_90_days
 /*
 Input: payments y first_bill_cycle
@@ -208,16 +214,19 @@ Logica: Agregar las flags de indentificar si es un never paid o no a 30 60 y 90 
 SELECT * 
     ,CASE   WHEN total_payments_30_days IS NULL THEN act_acct_cd
             WHEN total_payments_30_days < max_tot_mrc THEN act_acct_cd ELSE NULL END AS npn_30_flag
+    ,CASE   WHEN payment_window >= 30 then act_acct_cd else null end as window_completed_30
     ,CASE   WHEN total_payments_60_days IS NULL THEN act_acct_cd
             WHEN total_payments_60_days < max_tot_mrc THEN act_acct_cd ELSE NULL END AS npn_60_flag
+    ,CASE   WHEN payment_window>= 60 then act_acct_cd else null end as window_completed_60 
     ,CASE   WHEN total_payments_90_days IS NULL THEN act_acct_cd
             WHEN total_payments_90_days < max_tot_mrc THEN act_acct_cd ELSE NULL END AS npn_90_flag
+    ,CASE   WHEN payment_window>= 90 then act_acct_cd else null end as window_completed_90  
     ,CASE   WHEN total_payments_in_3_months IS NULL THEN act_acct_cd
             WHEN total_payments_in_3_months < max_tot_mrc THEN act_acct_cd ELSE NULL END AS npn_flag
 FROM first_cycle_info 
 LEFT JOIN Payments_basic USING (act_acct_cd)
 )
-
+--select * from gross_add_presummary limit 100
 --###################### INFORMACIÓN PARA NPN DE CROSS SELLS ####################################
 /*
 Input: Main_sale_base (usuarios que aparecen en la base de gross adds junto con su infromacion del dna) y candidates (usuariosidentificados como gross adds 
@@ -233,6 +242,7 @@ SELECT   act_acct_cd
         ,max(first_rgu_qty) as first_rgu_qty
         ,MAX(last_pd_mix_qty) AS last_pd_mix_qty
         ,MAX(last_rgu_qty) AS last_rgu_qty
+        ,MAX(rgu_vendidos) AS rgu_vendidos
         /*Variacion de RGUs estimada a partir de los nombres de los producutos - considera el cambio de productos como una venta de rgu*/
         ,SUM( 
             IF(last_pd[1] != first_pd[1], 1, 0) +
@@ -251,6 +261,7 @@ SELECT   act_acct_cd
         --,MAX(last_pd) AS LAST_PD
 FROM (
     SELECT act_acct_cd
+            ,MAX(fi_rgu_vendidos) AS rgu_vendidos
              /*Primera cantidad de rgus basado en la columna del mis del usuario (0P,1P,2P,3P)*/
             ,TRY(ARRAY_AGG(pd_mix_qty ORDER BY dt)[1]) AS first_pd_mix_qty
             /*Primera cantidad de rgus basado en los nombres de los productos*/
@@ -292,7 +303,7 @@ SELECT b.act_acct_cd
         ,MAX(upsell_rgus) AS upsell_rgus
         ,MAX(upsell_rgus_names) AS upsell_rgus_names
         ,MAX(upsell_rgu_with_planchanges) AS upsell_rgu_with_planchanges
-        --,MAX(rgu_vendidos) AS rgu_vendidos
+        ,MAX(rgu_vendidos) AS rgu_vendidos
         ,MAX(max_rgu) AS max_rgu
         ,MIN(upsell_update_date) AS upsell_update_date
         ,MIN(DATE(fi_bill_dt_m0)) AS first_bill_after_upsell
@@ -309,7 +320,7 @@ INNER JOIN (
             ,MAX(upsell_rgus) AS upsell_rgus
             ,MAX(upsell_rgu_with_planchanges) AS upsell_rgu_with_planchanges
             ,MAX(upsell_rgus_names) AS upsell_rgus_names
-            --,MAX(rgu_vendidos) AS rgu_vendidos
+            ,MAX(rgu_vendidos) AS rgu_vendidos
             ,MAX(last_pd_mix_qty) AS max_rgu
             ,MIN(array_change_rgu[2]) AS upsell_update_date
             --,max(sale_rep) as sale_rep
@@ -331,11 +342,12 @@ SELECT  a.act_acct_cd
         ,MAX(b.upsell_rgus) AS upsell_rgus
         ,MAX(b.upsell_rgu_with_planchanges) AS upsell_rgu_with_planchanges
         ,MAX(upsell_rgus_names) AS upsell_rgus_names
-        --,MAX(rgu_vendidos) AS rgu_vendidos
+        ,MAX(rgu_vendidos) AS rgu_vendidos
         ,MAX(b.max_rgu) AS max_rgu
         --,MIN(upsell_update_date) AS upsell_update_date
         ,MIN(first_bill_after_upsell) AS first_bill_after_upsell
         ,MAX(fi_tot_mrc_amt) AS max_tot_mrc
+        ,MIN(DATE_DIFF('day', DATE(b.first_bill_after_upsell), (select current_month from parameters))) as payment_window
         --,ARRAY_AGG(DISTINCT fi_tot_mrc_amt ORDER BY fi_tot_mrc_amt DESC) AS ARREGLO_MRC
 FROM dna_usefull_fields AS a
 INNER JOIN bills_of_interest_upsell_base AS b ON a.act_acct_cd = b.act_acct_cd AND a.dt BETWEEN b.first_bill_after_upsell AND first_bill_after_upsell + INTERVAL '2' MONTH
@@ -348,25 +360,30 @@ SELECT  act_acct_cd
         --,TRY(ARRAY_AGG(DATE(DT) ORDER BY DATE(DT) DESC)[1]) AS LAST_PAY_DATE
         --,ARRAY_AGG(DATE(DT) ORDER BY DATE(DT)) AS ARREGLO_PAGOS_DATES
         --,ARRAY_AGG(CAST(payment_amt_usd AS DOUBLE) ORDER BY DATE(DT)) AS ARREGLO_PAGOS
+        
         ,ROUND(SUM(CAST(payment_amt_usd AS DOUBLE)),2) AS total_payments_in_3_months
         ,ROUND(SUM(IF(DATE_DIFF('month', DATE(b.first_bill_after_upsell), DATE(dt)) < 1 OR (EXTRACT(DAY FROM b.first_bill_after_upsell) = EXTRACT(DAY FROM DATE(dt)) AND EXTRACT(MONTH FROM b.first_bill_after_upsell) + 1 = EXTRACT(MONTH FROM DATE(dt))) ,CAST(payment_amt_usd AS DOUBLE), NULL)),2) AS total_payments_30_days
         ,ROUND(SUM(IF(DATE_DIFF('month', DATE(b.first_bill_after_upsell), DATE(dt)) < 2 OR (EXTRACT(DAY FROM b.first_bill_after_upsell) = EXTRACT(DAY FROM DATE(dt)) AND EXTRACT(MONTH FROM b.first_bill_after_upsell) + 2 = EXTRACT(MONTH FROM DATE(dt))),CAST(payment_amt_usd AS DOUBLE), NULL)),2) AS total_payments_60_days
         ,ROUND(SUM(IF(DATE_DIFF('month', DATE(b.first_bill_after_upsell), DATE(dt)) < 3 OR (EXTRACT(DAY FROM b.first_bill_after_upsell) = EXTRACT(DAY FROM DATE(dt)) AND EXTRACT(MONTH FROM b.first_bill_after_upsell) + 3 = EXTRACT(MONTH FROM DATE(dt))),CAST(payment_amt_usd AS DOUBLE), NULL)),2) AS total_payments_90_days
 FROM "db-stage-prod"."payments_cwp"  AS P
 INNER JOIN MRC_upsell AS b ON b.act_acct_cd = CAST(P.account_id AS VARCHAR) AND DATE(P.dt) BETWEEN first_bill_after_upsell AND first_bill_after_upsell + INTERVAL '3' MONTH
-GROUP BY act_acct_cd, max_tot_mrc
+GROUP BY act_acct_cd
 )
 
+-- select* from upsell_payments limit 1000
 ,upsell_presummary AS (
 SELECT *
-        ,CASE   WHEN total_payments_30_days IS NULL THEN act_acct_cd
-                WHEN total_payments_30_days < max_tot_mrc THEN act_acct_cd ELSE NULL END AS npn_30_flag
-        ,CASE   WHEN total_payments_60_days IS NULL THEN act_acct_cd
-                WHEN total_payments_60_days < max_tot_mrc THEN act_acct_cd ELSE NULL END AS npn_60_flag
-        ,CASE   WHEN total_payments_90_days IS NULL THEN act_acct_cd
-                WHEN total_payments_90_days < max_tot_mrc THEN act_acct_cd ELSE NULL END AS npn_90_flag
-        ,CASE   WHEN total_payments_in_3_months IS NULL THEN act_acct_cd
-                WHEN total_payments_in_3_months < max_tot_mrc THEN act_acct_cd ELSE NULL END AS npn_flag
+    ,CASE   WHEN total_payments_30_days IS NULL THEN act_acct_cd
+            WHEN total_payments_30_days < max_tot_mrc THEN act_acct_cd ELSE NULL END AS npn_30_flag
+    ,CASE   WHEN payment_window>= 30 then act_acct_cd else null end as window_completed_30 
+    ,CASE   WHEN total_payments_60_days IS NULL THEN act_acct_cd
+            WHEN total_payments_60_days < max_tot_mrc THEN act_acct_cd ELSE NULL END AS npn_60_flag
+    ,CASE   WHEN payment_window>= 60 then act_acct_cd else null end as window_completed_60 
+    ,CASE   WHEN total_payments_90_days IS NULL THEN act_acct_cd
+            WHEN total_payments_90_days < max_tot_mrc THEN act_acct_cd ELSE NULL END AS npn_90_flag
+    ,CASE   WHEN payment_window>= 90 then act_acct_cd else null end as window_completed_90 
+    ,CASE   WHEN total_payments_in_3_months IS NULL THEN act_acct_cd
+            WHEN total_payments_in_3_months < max_tot_mrc THEN act_acct_cd ELSE NULL END AS npn_flag
 FROM MRC_upsell AS a
 LEFT JOIN upsell_payments USING (act_acct_cd)
 )
@@ -378,7 +395,7 @@ SELECT 'Upsell' AS base_classification, upsell_type,act_acct_cd,first_pd_mix_qty
         NULL AS first_bill_created, max_tot_mrc, 
         --ARREGLO_MRC, FIRST_PAY_DATE, LAST_PAY_DATE, ARREGLO_PAGOS_DATES, ARREGLO_PAGOS, 
         total_payments_in_3_months, total_payments_30_days, total_payments_60_days, total_payments_90_days
-        ,npn_30_flag, npn_60_flag, npn_90_flag, npn_flag
+        ,npn_30_flag, npn_60_flag, npn_90_flag, npn_flag,window_completed_30 ,window_completed_60 ,window_completed_90,rgu_vendidos
 FROM upsell_presummary AS u
 UNION ALL
 SELECT 'Gross-add' AS base_classification, NULL AS upsell_type, act_acct_cd, null as first_pd_mix_qty,null as first_rgu_qty,null as last_pd_mix_qty,null as last_rgu_qty,max_rgu as last_rgu,NULL AS upsell_rgus,null as upsell_rgu_with_planchanges,
@@ -387,7 +404,7 @@ SELECT 'Gross-add' AS base_classification, NULL AS upsell_type, act_acct_cd, nul
         first_bill_created,max_tot_mrc,
         --ARREGLO_MRC,FIRST_PAY_DATE,LAST_PAY_DATE,ARREGLO_PAGOS_DATES,ARREGLO_PAGOS,
         total_payments_in_3_months,total_payments_30_days,total_payments_60_days,total_payments_90_days,
-        npn_30_flag,npn_60_flag,npn_90_flag,npn_flag
+        npn_30_flag,npn_60_flag,npn_90_flag,npn_flag,window_completed_30 ,window_completed_60 ,window_completed_90 ,rgu_vendidos
 FROM gross_add_presummary AS g
 )
 
@@ -400,9 +417,11 @@ INNER JOIN dna_usefull_fields c on a.act_acct_cd = c.act_acct_cd
 )
 
 ,summary_flag as (
-SELECT *, case 
+SELECT *, 
+case when fi_sales_channel like 'D2D%' then 'D2D' else fi_sales_channel end as sales_channel_adj,
+case 
 when base_classification = 'Gross-add' then 'Gross Add'
-when upsell_type = 'Upsell' and upsell_rgus_names >0 then 'Upsell'
+when upsell_type = 'Upsell' and upsell_rgus >0 then 'Upsell'
 else 'Other'  end as movement_flag
 , case
 when base_classification = 'Gross-add' and last_rgu = 1 then '1P'
@@ -412,16 +431,25 @@ when base_classification in ('Upsell', 'Other') and first_pd_mix_qty = 1 then '1
 when base_classification in ('Upsell', 'Other') and first_pd_mix_qty = 2 then '2P'
 when base_classification in ('Upsell', 'Other') and first_pd_mix_qty = 3 then '3P'
 else null  end as bunddle_type
-, case when base_classification = 'Gross-add' then 0 else first_pd_mix_qty end as first_rgu_cnt
-, case when base_classification = 'Gross-add' then last_rgu else last_pd_mix_qty end as last_rgu_cnt
-, case when base_classification = 'Gross-add' then last_rgu else last_pd_mix_qty end - case when base_classification = 'Gross-add' then 0 else first_pd_mix_qty end as rgus_sold
+
 from summary_by_user 
+)
+
+,summary_rgus as (
+SELECT *
+, case when base_classification = 'Gross-add' then 0 else first_pd_mix_qty end as first_rgu_cnt
+, case when base_classification = 'Gross-add' THEN last_rgu else last_pd_mix_qty end as last_rgu_cnt
+,case 
+    when movement_flag  = 'Gross Add' then last_rgu 
+    when movement_flag = 'Upsell' then (last_pd_mix_qty - first_pd_mix_qty)
+    else rgu_vendidos end as rgus_sold
+from summary_flag
 )
 
 ,gross_adds_view as (
 select distinct 
-sales_month,act_acct_cd,techflag,bunddle_type,socioeconomic_seg,geography,first_rgu_cnt,last_rgu_cnt,rgus_sold, movement_flag,fi_sales_channel as sales_channel, case when fi_sales_channel = 'Contractors' then fi_sales_channel_sub else null end as contractor, fi_codigo_de_vendedor as cod_sales_rep,npn_30_flag,npn_60_flag,npn_90_flag,npn_flag
-from summary_flag
+sales_month,act_acct_cd,techflag,bunddle_type,socioeconomic_seg,geography,first_rgu_cnt,last_rgu_cnt,rgus_sold,rgu_vendidos, movement_flag,sales_channel_adj as sales_channel, fi_sales_channel_sub  as contractor, fi_codigo_de_vendedor as cod_sales_rep,npn_30_flag,npn_60_flag,npn_90_flag,npn_flag,window_completed_30 ,window_completed_60 ,window_completed_90 
+from summary_rgus
 )
 
 select * from gross_adds_view
