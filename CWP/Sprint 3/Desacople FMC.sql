@@ -8,35 +8,34 @@ WITH
 
 parameters AS (
 -- Seleccionar el mes en que se desea realizar la corrida
-SELECT DATE_TRUNC('month',DATE('2022-11
--01')) AS input_month
+SELECT DATE_TRUNC('month',DATE('2022-11-01')) AS input_month
 )
 
--- ,voluntary_churners AS (
--- SELECT distinct  account_id
--- FROM "db-stage-prod"."so_headers_cwp" 
--- WHERE order_type = 'DEACTIVATION' AND ACCOUNT_TYPE='R' AND ORDER_STATUS='COMPLETED'
---         AND DATE_TRUNC('MONTH',CAST(order_start_date AS DATE)) = (SELECT input_month FROM parameters)
--- )
+,voluntary_churners AS (
+SELECT distinct  account_id
+FROM "db-stage-prod"."so_headers_cwp" 
+WHERE order_type = 'DEACTIVATION' AND ACCOUNT_TYPE='R' AND ORDER_STATUS='COMPLETED'
+        AND DATE_TRUNC('MONTH',CAST(order_start_date AS DATE)) = (SELECT input_month FROM parameters)
+)
 
 ,base AS (
 SELECT  * 
 FROM (
 select *, first_value(dt) over(partition by act_acct_cd order by dt) as first_dna_dt 
 from "db-analytics-prod"."fixed_cwp"
+)
 WHERE date(dt) = (SELECT input_month FROM parameters) + interval '1' month - interval '1' day
 and PD_MIX_CD<>'0P' and act_cust_typ_nm = 'Residencial'
 -- and act_acct_cd not in (select cast(account_id as varchar) from voluntary_churners)
-)
-Where (((CAST(FI_OUTST_AGE AS INTEGER) <= 90 OR FI_OUTST_AGE IS NULL) )--OR date_diff('day',date(date_parse(substring(cast(oldest_unpaid_bill_dt as varchar),1,8), '%Y%m%d')),date(dt)) < 90) 
-or (date_trunc('MONTH',date(first_dna_dt) )= (SELECT input_month FROM parameters) and (CAST(FI_OUTST_AGE AS INTEGER) >= 90 OR FI_OUTST_AGE IS NULL)))
--- and act_acct_cd not in (select cast(account_id as  varchar) from voluntary_churners)
+and (((CAST(FI_OUTST_AGE AS INTEGER) <= 90 OR FI_OUTST_AGE IS NULL) )--OR date_diff('day',date(date_parse(substring(cast(oldest_unpaid_bill_dt as varchar),1,8), '%Y%m%d')),date(dt)) < 90) 
+or (date_trunc('MONTH',date(first_dna_dt))= (SELECT input_month FROM parameters) and (CAST(FI_OUTST_AGE AS INTEGER) >= 90 OR FI_OUTST_AGE IS NULL)))
+and act_acct_cd not in (select cast(account_id as  varchar) from voluntary_churners)
 )
 
 ,Convergente AS (
 SELECT  household_id,tipo,DATE_TRUNC('MONTH', DATE_PARSE(CAST(Date AS VARCHAR(10)), '%Y%m%d')) as Mes
-FROM "lla_cco_int_ext_dev"."cwp_con_ext_fmc"
-WHERE telefonia='Pospago' AND "unidad de negocio"='1. B2C'
+FROM "lla_cco_int_ext_dev"."cwp_con_ext_report_fmc_dev" 
+WHERE telefonia='Pospago' AND "unidad_de_negocio"='1. B2C'
  AND DATE_TRUNC('MONTH', DATE_PARSE(CAST(Date AS VARCHAR(10)), '%Y%m%d'))= (select input_month from parameters)-- or DATE_TRUNC('MONTH', DATE_PARSE(CAST(Date AS VARCHAR(10)), '%Y%m%d'))=DATE('2022-09-01')
 )
 
@@ -51,6 +50,8 @@ select * ,
     from base b left join convergente on cast(household_id as varchar) = act_acct_cd  
 )
 
+
+
 ,active_base as (
 select *, 
     case when FMCflagfix = '2.Near FMC' then 'Near FMC' 
@@ -63,7 +64,7 @@ select *,
 
 )
  
---   select FMCFlagfix,count(distinct act_acct_cd) from active_base group by 1       
+ select FMC_flag_def,count(distinct act_acct_cd) from active_base group by 1       
 
 --select dt,FMC_flag_def, count(distinct act_acct_cd) from FMC_flag group by 1,2
 
@@ -523,7 +524,7 @@ FROM FullTable_KPIsFlags F LEFT JOIN saleschannel_so S ON F.act_acct_cd = CAST(S
 ------------------------ RESULTS QUERY -----------------------------------
 
 SELECT  date_trunc('MONTH',date(dt)) as month
-        ,FMC_flag_def
+        -- ,FMC_flag_def
 /*
         ,B_Final_TechFlag
         ,B_FMCSegment
@@ -572,5 +573,5 @@ SELECT  date_trunc('MONTH',date(dt)) as month
 -- SELECT *
 FROM FullTable_Adj
 --WHERE ((Fixedchurntype != 'Fixed Voluntary Churner' AND Fixedchurntype != 'Fixed Involuntary Churner') OR Fixedchurntype IS NULL) AND finalchurnflag !='Fixed Churner'  
-GROUP BY 1,2--,2,3,4,5,6,7,8,9,B_FMCTYPE, E_FMCTYPE, first_sales_chnl_eom, first_sales_chnl_bom, Last_Sales_CHNL_EOM, Last_Sales_CHNL_BOM , sales_channel,sales_channel_so
+GROUP BY 1--,2--,2,3,4,5,6,7,8,9,B_FMCTYPE, E_FMCTYPE, first_sales_chnl_eom, first_sales_chnl_bom, Last_Sales_CHNL_EOM, Last_Sales_CHNL_BOM , sales_channel,sales_channel_so
 ORDER BY 1
