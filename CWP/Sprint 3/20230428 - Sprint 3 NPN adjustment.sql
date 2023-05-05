@@ -1,3 +1,10 @@
+-----------------------------------------------------------------------------------------
+------------------------- SPRINT 3 PARAMETRIZADO - V1-----------------------------------
+-- New Never Paid Logic: Consider never paid those users that their last payment are 
+-- less than the total mrc ammount over the last 30,60,90 days
+-----------------------------------------------------------------------------------------
+
+
 WITH 
 Parameters AS (
 SELECT DATE('2023-03-01') AS input_month
